@@ -57,7 +57,14 @@ async def get_all_orders(async_db: AsyncSession = Depends(get_async_session)):
 @app.post("/orders")
 async def create(request: OrderBase, background_task: BackgroundTasks,
                  async_db: AsyncSession = Depends(get_async_session)):
-    product = requests.get(f"http://localhost:8000/products/{request.product_id}")
+    async with httpx.AsyncClient() as client:
+        response = await helper_create_order(request, client, background_task, async_db)
+    return response
+
+
+async def helper_create_order(request: OrderBase, client, background_task: BackgroundTasks,
+                              async_db: AsyncSession):
+    product = await client.get(f"http://localhost:8000/products/{request.product_id}")
     product_in_scheme = schemas.ProductOut(**product.json())
 
     new_order = models.Order(product_id=product_in_scheme.id,
@@ -79,16 +86,16 @@ async def create(request: OrderBase, background_task: BackgroundTasks,
 @app.post("/orders/bulk")
 async def create_bulk(request: schemas.ListOrders, background_task: BackgroundTasks,
                       async_db: AsyncSession = Depends(get_async_session)):
-
     async with httpx.AsyncClient() as client:
         reqs_list = []
         for req in request.data:
-            reqs_list.append(client.get(f"http://localhost:8000/products/{req.product_id}"))
+            reqs_list.append(helper_create_order(req, client, background_task, async_db))
         result = await asyncio.gather(*reqs_list)
+        return result
         # pprint(list(map(lambda x: x.text, result)))
 
 
-def order_completed(order: models.Order, async_db: AsyncSession):
+async def order_completed(order: models.Order, async_db: AsyncSession):
     time.sleep(10)
     order.status = models.Status.COMPLETED
-    async_db.commit()
+    await async_db.commit()
