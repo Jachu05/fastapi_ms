@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import List
 
 from pydantic import BaseModel
 
@@ -34,3 +35,11 @@ class OrderOut(OrderBase):
 
     class Config:
         orm_mode = True
+
+
+class ListOrders(BaseModel):
+    data: List[OrderBase]
+
+
+class ListOrdersOut(BaseModel):
+    data: List[OrderOut]
