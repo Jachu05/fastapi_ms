@@ -7,6 +7,7 @@ from fastapi import FastAPI, Depends
 from fastapi.background import BackgroundTasks
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import update
 from starlette import status
 from starlette.middleware.cors import CORSMiddleware
 
@@ -64,20 +65,21 @@ async def create(request: OrderBase, background_task: BackgroundTasks,
 
 async def helper_create_order(request: OrderBase, client, background_task: BackgroundTasks,
                               ):
-    async with AsyncSession(async_engine) as async_db:
-        product = await client.get(f"http://localhost:8000/products/{request.product_id}")
-        product_in_scheme = schemas.ProductOut(**product.json())
+    product = await client.get(f"http://localhost:8000/products/{request.product_id}")
+    product_in_scheme = schemas.ProductOut(**product.json())
 
-        new_order = models.Order(product_id=product_in_scheme.id,
-                                 price=product_in_scheme.price,
-                                 fee=0.2 * product_in_scheme.price,
-                                 total=1.2 * product_in_scheme.price,
-                                 quantity=product_in_scheme.quantity,
-                                 status=models.Status.PENDING)
+    new_order = models.Order(product_id=product_in_scheme.id,
+                             price=product_in_scheme.price,
+                             fee=0.2 * product_in_scheme.price,
+                             total=1.2 * product_in_scheme.price,
+                             quantity=product_in_scheme.quantity,
+                             status=models.Status.PENDING)
+
+    async with AsyncSession(async_engine) as async_db:
         async_db.add(new_order)
         await async_db.commit()
-
-    # background_task.add_task(order_completed, new_order, async_db)
+        await async_db.refresh(new_order)
+        background_task.add_task(order_completed, new_order.id)
 
     return new_order
 
@@ -93,10 +95,14 @@ async def create_bulk(request: schemas.ListOrders, background_task: BackgroundTa
         result = await asyncio.gather(*reqs_list)
     print('xD')
     return result
-    # pprint(list(map(lambda x: x.text, result)))
 
 
-async def order_completed(order: models.Order, async_db: AsyncSession):
-    time.sleep(10)
-    order.status = models.Status.COMPLETED
-    await async_db.commit()
+async def order_completed(order_id: models.Order.id):
+    print("[PRE CALC]", order_id)
+    time.sleep(1)
+    async with AsyncSession(async_engine) as async_db:
+        record = update(models.Order).where(models.Order.id == order_id)
+        record = record.values(status=models.Status.COMPLETED)
+        record.execution_options(synchronize_session="fetch")
+        await async_db.execute(record)
+        await async_db.commit()

@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import List
+from typing import List, Optional
 
 from pydantic import BaseModel
 
@@ -10,6 +10,12 @@ class ProductBase(BaseModel):
     name: str
     price: float
     quantity: int
+
+
+class ProductUpdate(BaseModel):
+    name: Optional[str]
+    price: Optional[float]
+    quantity: Optional[int]
 
 
 class ProductOut(ProductBase):
