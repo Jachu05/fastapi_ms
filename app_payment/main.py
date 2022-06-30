@@ -40,23 +40,8 @@ async def get_all_orders(async_db: AsyncSession = Depends(get_async_session)):
     return orders.scalars().all()
 
 
-# async run
-# @app.post("/orders")
-# async def create(request: Request):
-#     body = await request.json()
-#     print(body)
-#
-#     async with httpx.AsyncClient() as client:
-#         req = []
-#         for _ in range(5):
-#             req.append(client.get(f"http://localhost:8000/products/{body['id']}"))
-#         result = await asyncio.gather(*req)
-#         pprint(list(map(lambda x: x.text, result)))
-
-
 @app.post("/orders")
-async def create(request: OrderBase, background_task: BackgroundTasks,
-                 # async_db: AsyncSession = Depends(get_async_session)
+async def create(request: OrderBase, background_task: BackgroundTasks
                  ):
     async with httpx.AsyncClient() as client:
         response = await helper_create_order(request, client, background_task)
@@ -85,24 +70,22 @@ async def helper_create_order(request: OrderBase, client, background_task: Backg
 
 
 @app.post("/orders/bulk")
-async def create_bulk(request: schemas.ListOrders, background_task: BackgroundTasks,
-                      # async_db: AsyncSession = Depends(get_async_session)
+async def create_bulk(request: schemas.ListOrders, background_task: BackgroundTasks
                       ):
     async with httpx.AsyncClient() as client:
         reqs_list = []
         for req in request.data:
             reqs_list.append(helper_create_order(req, client, background_task))
         result = await asyncio.gather(*reqs_list)
-    print('xD')
+
     return result
 
 
 async def order_completed(order_id: models.Order.id):
-    print("[PRE CALC]", order_id)
-    time.sleep(1)
+    time.sleep(1)  # simulates calculation
+    record = update(models.Order).where(models.Order.id == order_id)
+    record = record.values(status=models.Status.COMPLETED)
+    record.execution_options(synchronize_session="fetch")
     async with AsyncSession(async_engine) as async_db:
-        record = update(models.Order).where(models.Order.id == order_id)
-        record = record.values(status=models.Status.COMPLETED)
-        record.execution_options(synchronize_session="fetch")
         await async_db.execute(record)
         await async_db.commit()
