@@ -7,12 +7,19 @@ from config import settings
 SQLALCHEMY_DATABASE_URL = f'postgresql+asyncpg://{settings.database_username}:{settings.database_password}@' \
                           f'{settings.database_hostname}:{settings.database_port}/{settings.database_name}'
 
-engine = create_async_engine(SQLALCHEMY_DATABASE_URL, echo=True)
+async_engine = create_async_engine(SQLALCHEMY_DATABASE_URL,
+                                   echo=True,
+                                   connect_args={'timeout': 10},
+                                   pool_size=16,
+                                   max_overflow=10
+                                   )
 
 Base = declarative_base()
 
 async_session = sessionmaker(
-    engine, class_=AsyncSession, expire_on_commit=False
+    async_engine, class_=AsyncSession, expire_on_commit=False,
+    # autocommit=False,
+    # autoflush=False,
 )
 
 

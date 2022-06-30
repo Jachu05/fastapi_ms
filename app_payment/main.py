@@ -3,7 +3,6 @@ import time
 from typing import List
 
 import httpx
-import requests
 from fastapi import FastAPI, Depends
 from fastapi.background import BackgroundTasks
 from sqlalchemy import select
@@ -14,7 +13,7 @@ from starlette.middleware.cors import CORSMiddleware
 # models.Base.metadata.create_all(bind=engine)
 import models
 import schemas
-from database import get_async_session
+from database import get_async_session, async_engine
 from schemas import OrderBase
 
 app = FastAPI()
@@ -56,43 +55,45 @@ async def get_all_orders(async_db: AsyncSession = Depends(get_async_session)):
 
 @app.post("/orders")
 async def create(request: OrderBase, background_task: BackgroundTasks,
-                 async_db: AsyncSession = Depends(get_async_session)):
+                 # async_db: AsyncSession = Depends(get_async_session)
+                 ):
     async with httpx.AsyncClient() as client:
-        response = await helper_create_order(request, client, background_task, async_db)
+        response = await helper_create_order(request, client, background_task)
     return response
 
 
 async def helper_create_order(request: OrderBase, client, background_task: BackgroundTasks,
-                              async_db: AsyncSession):
-    product = await client.get(f"http://localhost:8000/products/{request.product_id}")
-    product_in_scheme = schemas.ProductOut(**product.json())
+                              ):
+    async with AsyncSession(async_engine) as async_db:
+        product = await client.get(f"http://localhost:8000/products/{request.product_id}")
+        product_in_scheme = schemas.ProductOut(**product.json())
 
-    new_order = models.Order(product_id=product_in_scheme.id,
-                             price=product_in_scheme.price,
-                             fee=0.2 * product_in_scheme.price,
-                             total=1.2 * product_in_scheme.price,
-                             quantity=product_in_scheme.quantity,
-                             status=models.Status.PENDING)
-    async_db.add(new_order)
-    await async_db.commit()
+        new_order = models.Order(product_id=product_in_scheme.id,
+                                 price=product_in_scheme.price,
+                                 fee=0.2 * product_in_scheme.price,
+                                 total=1.2 * product_in_scheme.price,
+                                 quantity=product_in_scheme.quantity,
+                                 status=models.Status.PENDING)
+        async_db.add(new_order)
+        await async_db.commit()
 
-    await async_db.refresh(new_order)
-
-    background_task.add_task(order_completed, new_order, async_db)
+    # background_task.add_task(order_completed, new_order, async_db)
 
     return new_order
 
 
 @app.post("/orders/bulk")
 async def create_bulk(request: schemas.ListOrders, background_task: BackgroundTasks,
-                      async_db: AsyncSession = Depends(get_async_session)):
+                      # async_db: AsyncSession = Depends(get_async_session)
+                      ):
     async with httpx.AsyncClient() as client:
         reqs_list = []
         for req in request.data:
-            reqs_list.append(helper_create_order(req, client, background_task, async_db))
+            reqs_list.append(helper_create_order(req, client, background_task))
         result = await asyncio.gather(*reqs_list)
-        return result
-        # pprint(list(map(lambda x: x.text, result)))
+    print('xD')
+    return result
+    # pprint(list(map(lambda x: x.text, result)))
 
 
 async def order_completed(order: models.Order, async_db: AsyncSession):
